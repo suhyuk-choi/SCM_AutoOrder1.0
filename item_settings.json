@@ -1,0 +1,40 @@
+{
+    "master_defaults": {
+        "lead_time": 7,
+        "safety_stock_rate": 10,
+        "addition_rate": 0,
+        "order_unit": 5,
+        "min_sales": 5
+    },
+    "defaults": {},
+    "overrides": {
+        "103224048": {
+            "lead_time": 7,
+            "safety_stock_rate": 10,
+            "addition_rate": 0,
+            "order_unit": 5,
+            "min_sales": 10
+        },
+        "211011111": {
+            "lead_time": 7,
+            "safety_stock_rate": 10,
+            "addition_rate": 0,
+            "order_unit": 2,
+            "min_sales": 0
+        },
+        "211011163": {
+            "lead_time": 7,
+            "safety_stock_rate": 10,
+            "addition_rate": 0,
+            "order_unit": 10,
+            "min_sales": 10
+        },
+        "702037108": {
+            "lead_time": 4,
+            "safety_stock_rate": 10,
+            "addition_rate": 0,
+            "order_unit": 2,
+            "min_sales": 0
+        }
+    }
+}
