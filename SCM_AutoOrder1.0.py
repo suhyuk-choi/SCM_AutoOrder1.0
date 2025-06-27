@@ -11,7 +11,7 @@ from pathlib import Path
 from io import BytesIO
 import plotly.express as px
 
-# --- 1. 기본 설정 및 스타일 ---
+# --- 1. 기본 설정 및 스타일 (변경 없음) ---
 st.set_page_config(page_title="LPI TEAM 자동 납품량 계산 시스템", layout="wide")
 st.markdown("""
 <style>
@@ -21,7 +21,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.markdown('<div class="footer">©2025-07 by suhyuk (twodoong@gmail.com)</div>', unsafe_allow_html=True)
 
-# --- 2. 설정 및 상수 정의 ---
+# --- 2. 설정 및 상수 정의 (변경 없음) ---
 SETTINGS_FILE = 'item_settings.json'
 FILE_PATTERN = "현황*.xlsx"
 COL_ITEM_CODE = '상품코드'
@@ -35,8 +35,9 @@ COL_STOCK = '현재고'
 EXCLUDE_KEYWORDS = ['배송비', '첫 주문', '쿠폰', '개인결제', '마일리지']
 INITIAL_DEFAULT_SETTINGS = {'lead_time': 15, 'safety_stock_rate': 10, 'addition_rate': 0, 'order_unit': 5, 'min_sales': 0}
 
-# --- 3. 핵심 기능 함수 (이전과 동일, 변경 없음) ---
+# --- 3. 핵심 기능 함수 (변경 없음) ---
 def load_settings() -> Dict[str, Dict]:
+    # 이 함수는 session_state 초기화 로직 변경으로 인해 직접 호출되지는 않게 됩니다.
     if os.path.exists(SETTINGS_FILE):
         with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
             settings = json.load(f)
@@ -54,6 +55,7 @@ def load_settings() -> Dict[str, Dict]:
     return {"master_defaults": INITIAL_DEFAULT_SETTINGS.copy(), "defaults": {}, "overrides": {}}
 
 def save_settings(settings: Dict[str, Dict]):
+    # Streamlit 클라우드 환경의 읽기 전용 파일 시스템 문제로 이 함수는 호출되지 않도록 수정합니다.
     with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
         json.dump(settings, f, ensure_ascii=False, indent=4)
 
@@ -341,53 +343,54 @@ with title_col2:
 
 # --- 이하 모든 코드는 이전과 완전히 동일합니다 ---
 
+# ### 수정 1: Session State 초기화 방식 변경 ###
+# 파일에서 설정을 불러오는 대신, 항상 비어있는 기본 설정으로 시작합니다.
 if 'settings' not in st.session_state: 
-    st.session_state.settings = load_settings()
+    st.session_state.settings = {"master_defaults": INITIAL_DEFAULT_SETTINGS.copy(), "defaults": {}, "overrides": {}}
     
-    # 저장된 설정값이 있으면 표시용 세션 상태에도 설정
-    master_defaults = st.session_state.settings.get("master_defaults", INITIAL_DEFAULT_SETTINGS)
-    if master_defaults != INITIAL_DEFAULT_SETTINGS:
-        st.session_state.loaded_master_settings = master_defaults
-    
-    # 저장된 개별 설정값이 있으면 표시용 세션 상태에도 설정
-    overrides = st.session_state.settings.get("overrides", {})
-    if overrides:
-        individual_settings = []
-        for item_code, settings in overrides.items():
-            individual_settings.append({
-                '상품코드': item_code,
-                '리드타임(재발주기간)(일)': settings.get('lead_time', 0),
-                '안전재고율(%)': settings.get('safety_stock_rate', 0),
-                '가산율(%)': settings.get('addition_rate', 0),
-                '발주단위': settings.get('order_unit', 1),
-                '제외매출수량': settings.get('min_sales', 0)
-            })
-        if individual_settings:
-            st.session_state.loaded_individual_settings = individual_settings
 if 'suppliers' not in st.session_state: st.session_state.suppliers = []
 if 'result_df' not in st.session_state: st.session_state.result_df = pd.DataFrame()
 if 'searched_item' not in st.session_state: st.session_state.searched_item = None
 
 with st.expander("1. 분석 대상 파일 및 기간 설정", expanded=True):
-    downloads_path = Path.home() / "Downloads"
-
-    info_text_part1 = f"파일 검색 패턴: `{FILE_PATTERN}` (다운로드 폴더에서 찾습니다)"
+    # ### 수정 2: 파일 자동 검색 기능 제거 ###
+    # info_text_part1 = f"파일 검색 패턴: `{FILE_PATTERN}` (다운로드 폴더에서 찾습니다)" # 이 라인은 혼동을 줄 수 있어 주석 처리
     info_text_part2 = "▶ [상품별 매출 현황] 다운로드 엑셀 파일에는 '상품코드', '상품명', '규격', '바코드', '매출수량', '현구매단가', '현재고', '매입처' 컬럼이 포함되어야 합니다."
-    st.markdown(f"{info_text_part1}<br><span style='color:blue;'>{info_text_part2}</span>", unsafe_allow_html=True)
-
+    st.markdown(f"<span style='color:blue;'>{info_text_part2}</span>", unsafe_allow_html=True)
+    
     target_file_path = None
-    manual_upload = st.toggle("수동으로 파일 업로드")
-    if manual_upload:
-        uploaded_file = st.file_uploader("엑셀 파일을 직접 업로드하세요.", type=['xlsx', 'xls'])
-        if uploaded_file: target_file_path = uploaded_file
-    else:
+    
+    # --- 스마트 파일 로더 시작 ---
+    # 먼저 로컬 PC의 다운로드 폴더가 있는지, 그 안에 파일이 있는지 확인
+    downloads_path = Path.home() / "Downloads"
+    latest_file = None
+    
+    # 다운로드 폴더가 실제로 존재할 때만 자동 찾기 시도
+    if downloads_path.exists():
         latest_file = find_latest_file(downloads_path, FILE_PATTERN)
-        if latest_file:
-            st.success(f"✅ 자동으로 찾은 최신 파일: `{latest_file.name}`")
+
+    # CASE 1: 로컬 PC에서 파일을 자동으로 찾은 경우
+    if latest_file:
+        st.success(f"✅ 자동으로 찾은 최신 파일: `{latest_file.name}`")
+        # 사용자가 원하면 수동으로 전환할 수 있도록 토글 제공
+        manual_upload = st.toggle("수동으로 파일 업로드하기")
+        
+        if not manual_upload:
             target_file_path = latest_file
         else:
-            st.warning(f"`{downloads_path}`에서 `{FILE_PATTERN}` 파일을 찾을 수 없습니다.")
-
+            # 토글을 켜면 수동 업로더 표시
+            uploaded_file = st.file_uploader("엑셀 파일을 직접 업로드하세요.", type=['xlsx', 'xls'], key="manual_after_auto")
+            if uploaded_file:
+                target_file_path = uploaded_file
+                
+    # CASE 2: 파일을 자동으로 찾지 못한 경우 (웹 서버 환경 또는 PC에 파일이 없는 경우)
+    else:
+        # 수동 업로드 기능만 깔끔하게 표시
+        uploaded_file = st.file_uploader("분석할 현황 엑셀 파일을 업로드하세요.", type=['xlsx', 'xls'], key="manual_only")
+        if uploaded_file:
+            target_file_path = uploaded_file
+    # --- 스마트 파일 로더 끝 ---
+    
     st.divider()
     today = datetime.date.today()
     
@@ -425,46 +428,55 @@ with st.expander("2. 납품 설정 관리"):
         uploaded_settings_file = st.file_uploader("설정 파일을 업로드하세요.", type=['xlsx', 'xls'], key="settings_uploader")
         if uploaded_settings_file:
             try:
-                settings_df = pd.read_excel(uploaded_settings_file)
+                # 파일 이름을 session_state에 저장하여 변경 감지
+                current_file_name = uploaded_settings_file.name
                 
-                # 매입처별 기본값 찾기
-                master_row = settings_df[settings_df['설정구분'] == '매입처별 기본값']
-                if not master_row.empty:
-                    master_data = master_row.iloc[0]
-                    st.session_state.loaded_master_settings = {
-                        'lead_time': int(master_data.get('리드타임(재발주기간)(일)', 15)),
-                        'safety_stock_rate': int(master_data.get('안전재고율(%)', 10)),
-                        'addition_rate': int(master_data.get('가산율(%)', 0)),
-                        'order_unit': int(master_data.get('발주단위', 5)),
-                        'min_sales': int(master_data.get('제외매출수량', 0))
-                    }
+                # 이전 파일명과 비교하여 새로운 파일인지 확인
+                if 'last_settings_file' not in st.session_state or st.session_state.last_settings_file != current_file_name:
+                    st.session_state.last_settings_file = current_file_name
                     
-                    # 세션 상태의 settings 업데이트
-                    st.session_state.settings["master_defaults"] = st.session_state.loaded_master_settings
+                    settings_df = pd.read_excel(uploaded_settings_file)
                     
-                    # 설정값을 파일에 영구 저장
-                    save_settings(st.session_state.settings)
-                    st.success("설정값이 성공적으로 불러와지고 저장되었습니다.")
-                
-                # 개별 품목 설정 찾기
-                individual_rows = settings_df[settings_df['설정구분'] == '개별 품목 설정']
-                if not individual_rows.empty:
-                    st.session_state.loaded_individual_settings = individual_rows.to_dict('records')
+                    # 새로운 설정 파일 업로드 시 기존 설정 완전히 초기화
+                    st.session_state.settings["overrides"] = {}
+                    st.session_state.loaded_individual_settings = []
                     
-                    # 세션 상태의 overrides 업데이트
-                    for setting in st.session_state.loaded_individual_settings:
-                        item_code = str(setting.get('상품코드', ''))
-                        st.session_state.settings["overrides"][item_code] = {
-                            'lead_time': int(setting.get('리드타임(재발주기간)(일)', 0)),
-                            'safety_stock_rate': int(setting.get('안전재고율(%)', 0)),
-                            'addition_rate': int(setting.get('가산율(%)', 0)),
-                            'order_unit': int(setting.get('발주단위', 1)),
-                            'min_sales': int(setting.get('제외매출수량', 0))
+                    # 매입처별 기본값 찾기
+                    master_row = settings_df[settings_df['설정구분'] == '매입처별 기본값']
+                    if not master_row.empty:
+                        master_data = master_row.iloc[0]
+                        st.session_state.loaded_master_settings = {
+                            'lead_time': int(master_data.get('리드타임(재발주기간)(일)', 15)),
+                            'safety_stock_rate': int(master_data.get('안전재고율(%)', 10)),
+                            'addition_rate': int(master_data.get('가산율(%)', 0)),
+                            'order_unit': int(master_data.get('발주단위', 5)),
+                            'min_sales': int(master_data.get('제외매출수량', 0))
                         }
+                        
+                        # 세션 상태의 settings 업데이트
+                        st.session_state.settings["master_defaults"] = st.session_state.loaded_master_settings.copy()
+                        
+                        st.success("설정값이 성공적으로 불러와졌습니다.")
                     
-                    # 개별 품목 설정값도 파일에 영구 저장
-                    save_settings(st.session_state.settings)
-                
+                    # 개별 품목 설정 찾기
+                    individual_rows = settings_df[settings_df['설정구분'] == '개별 품목 설정']
+                    if not individual_rows.empty:
+                        st.session_state.loaded_individual_settings = individual_rows.to_dict('records')
+                        
+                        # 세션 상태의 overrides 업데이트
+                        for setting in st.session_state.loaded_individual_settings:
+                            item_code = str(setting.get('상품코드', ''))
+                            st.session_state.settings["overrides"][item_code] = {
+                                'lead_time': int(setting.get('리드타임(재발주기간)(일)', 0)),
+                                'safety_stock_rate': int(setting.get('안전재고율(%)', 0)),
+                                'addition_rate': int(setting.get('가산율(%)', 0)),
+                                'order_unit': int(setting.get('발주단위', 1)),
+                                'min_sales': int(setting.get('제외매출수량', 0))
+                            }
+                    
+                    # 화면 갱신을 위한 rerun (파일이 변경된 경우에만 실행)
+                    st.rerun()
+                    
             except Exception as e:
                 st.error(f"파일 읽기 오류: {e}")
         
@@ -656,10 +668,16 @@ if not st.session_state.result_df.empty:
 
         output = BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df_to_display_main.to_excel(writer, index=False, sheet_name='OrderList')
-            for column in df_to_display_main:
-                column_length = max(df_to_display_main[column].astype(str).map(len).max(), len(column))
-                col_idx = df_to_display_main.columns.get_loc(column)
+            # 엑셀 다운로드용 컬럼 선택
+            excel_columns = [
+                COL_ITEM_CODE, '상품명 (규격)', COL_BARCODE, COL_STOCK, COL_SALES,
+                '추천 납품량', '비고', '적용된 설정'
+            ]
+            excel_df = df_to_display_main[excel_columns]
+            excel_df.to_excel(writer, index=False, sheet_name='OrderList')
+            for column in excel_df:
+                column_length = max(excel_df[column].astype(str).map(len).max(), len(column))
+                col_idx = excel_df.columns.get_loc(column)
                 writer.sheets['OrderList'].set_column(col_idx, col_idx, column_length + 2)
         st.download_button(label="📥 엑셀 다운로드", data=output.getvalue(), file_name=f"납품추천결과_{datetime.datetime.now().strftime('%Y%m%d')}.xlsx")
 
